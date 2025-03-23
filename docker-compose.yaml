@@ -1,0 +1,62 @@
+
+services:
+  mariadb:
+    image: mariadb:latest
+    container_name: mariadb_container
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    ports:
+      - "${MYSQL_PORT}:${MYSQL_PORT}"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./my.cnf:/etc/mysql/my.cnf
+      - ./init_mariadb.sql:/docker-entrypoint-initdb.d/init.sql
+
+  postgresql:
+    image: postgres:latest
+    container_name: postgres_container
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGOPTIONS: ${PGOPTIONS}
+    ports:
+      - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init_postgresql.sql:/docker-entrypoint-initdb.d/init.sql
+
+  mongo7:
+    image: mongo:7
+    container_name: mongo7_container
+    restart: always
+    ports:
+      - "${MONGO_7_PORT}:${MONGO_INTERNAL_PORT}"
+    environment:
+      MONGO_DB_NAME: ${MONGO_DB_NAME}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      - mongo7_data:/data/db
+
+  mongo8:
+    image: mongo:8
+    container_name: mongo8_container
+    restart: always
+    ports:
+      - "${MONGO_8_PORT}:${MONGO_INTERNAL_PORT}"
+    environment:
+      MONGO_DB_NAME: ${MONGO_DB_NAME}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      - mongo8_data:/data/db
+
+volumes:
+  mariadb_data:
+  postgres_data:
+  mongo7_data:
+  mongo8_data:
