@@ -17,6 +17,8 @@ load_dotenv()
 # DB_TYPE = 'mariadb'
 DB_TYPE = 'postgresql'
 
+DEBUG_SELECT = False
+
 TEST_INSERT = True
 TEST_SELECT = True
 TEST_UPDATE = False
@@ -67,7 +69,7 @@ class Database:
         if self.db_type == 'mariadb':
             self.cursor.execute("SET PROFILING = 1;")
             self.cursor.execute(query, values or [])
-            if query.lower().startswith("select"):
+            if DEBUG_SELECT and query.lower().startswith("select"):
                 results = self.cursor.fetchall()
                 for row in results:
                     print(row)
