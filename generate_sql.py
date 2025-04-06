@@ -4,8 +4,9 @@ import os
 from faker import Faker
 import mysql.connector
 import psycopg2
-import itertools
+import more_itertools
 import sys
+import math
 from dotenv import load_dotenv
 
 DEBUG = True
@@ -19,17 +20,18 @@ DB_TYPE = 'postgresql'
 
 DEBUG_SELECT = False
 
-TEST_INSERT = True
+TEST_INSERT = False
 TEST_SELECT = True
-TEST_UPDATE = False
+TEST_UPDATE = True
 TEST_DELETE = True
+DELETE = False
 
-NUM_USERS = 100000
-NUM_POSTS = 100000
-NUM_COMMENTS = 100000
-NUM_LIKES = 100000
-NUM_FOLLOWERS = 100000
-NUM_MESSAGES = 100000
+NUM_USERS = 10000
+NUM_POSTS = 10000
+NUM_COMMENTS = 10000
+NUM_LIKES = 10000
+NUM_FOLLOWERS = 10000
+NUM_MESSAGES = 10000
 
 if NUM_FOLLOWERS > NUM_USERS * NUM_USERS - NUM_USERS or NUM_LIKES > NUM_POSTS * NUM_USERS:
     exit(1)
@@ -117,10 +119,10 @@ def generate_comments(posts, users, num_comments):
     return [(i+1, random.choice(posts)[0], random.choice(users)[0], fake.text()) for i in progress_bar(range(num_comments))]
 
 def generate_likes(posts, users, num_likes):
-    return [(idx, post[0], user[0]) for idx, (post, user) in enumerate(progress_bar(list(itertools.islice(itertools.product(posts, users), num_likes))))]
+    return [(i+1, pair[0][0], pair[1][0]) for i in progress_bar(random.sample(range(len(posts) * len(users)), num_likes)) if (pair := more_itertools.nth_product(i, posts, users))]
 
 def generate_followers(users, num_followers):
-    return [(pair[0][0], pair[1][0]) for pair in progress_bar(list(itertools.islice(itertools.combinations(users, 2), num_followers)))]
+    return [(pair[0][0], pair[1][0]) for i in progress_bar(random.sample(range(math.comb(len(users), 2)), num_followers)) if (pair := more_itertools.nth_combination(users, 2, i))]
 
 def generate_messages(users, num_messages):
     return [(i+1, random.choice(users)[0], random.choice(users)[0], fake.text()) for i in progress_bar(range(num_messages))]
@@ -138,21 +140,62 @@ def delete_data(db, table):
 
 def select_queries(db):
     queries = [
-        f"SELECT * FROM Users LIMIT {NUM_USERS // 2}",
-        f"SELECT username, email FROM Users WHERE user_id < {NUM_USERS // 2}",
+        f"SELECT * FROM Users LIMIT {NUM_USERS * 50 // 100}",
+        f"SELECT username, email FROM Users WHERE user_id < {NUM_USERS * 50 // 100}",
         "SELECT COUNT(*) FROM Posts",
-        f"SELECT Users.username, Posts.content FROM Users JOIN Posts ON Users.user_id = Posts.user_id LIMIT {NUM_POSTS // 2}",
+        f"SELECT Users.username, Posts.content FROM Users JOIN Posts ON Users.user_id = Posts.user_id LIMIT {NUM_POSTS * 50 // 100}",
         "SELECT Users.username, COUNT(Comments.comment_id) FROM Users JOIN Comments ON Users.user_id = Comments.user_id GROUP BY Users.username",
-        f"SELECT Posts.post_id, COUNT(Likes.like_id) AS like_count FROM Posts LEFT JOIN Likes ON Posts.post_id = Likes.post_id GROUP BY Posts.post_id ORDER BY like_count DESC LIMIT {NUM_POSTS // 2}",
-        "SELECT Users.username FROM Users WHERE EXISTS (SELECT 1 FROM Followers WHERE Followers.follower_user_id = Users.user_id)",
+        f"SELECT Posts.post_id, COUNT(Likes.like_id) AS like_count FROM Posts LEFT JOIN Likes ON Posts.post_id = Likes.post_id GROUP BY Posts.post_id ORDER BY like_count DESC LIMIT {NUM_POSTS * 50 // 100}",
+        f"SELECT Users.username FROM Users WHERE EXISTS (SELECT 1 FROM Followers WHERE Followers.follower_user_id = Users.user_id)",
         "SELECT Messages.sender_id, Messages.receiver_id, COUNT(Messages.message_id) FROM Messages GROUP BY Messages.sender_id, Messages.receiver_id HAVING COUNT(Messages.message_id) > 0",
-        "SELECT Users.username, Posts.content FROM Users JOIN Posts ON Users.user_id = Posts.user_id WHERE Posts.post_id IN (SELECT post_id FROM Likes GROUP BY post_id HAVING COUNT(user_id) > 0)",
+        "SELECT Users.username, Posts.content FROM Users JOIN Posts ON Users.user_id = Posts.user_id JOIN Likes ON Posts.post_id = Likes.post_id GROUP BY Users.username, Posts.content HAVING COUNT(Likes.like_id) > 1",
         "SELECT Users.username, COUNT(Posts.post_id) AS post_count FROM Users JOIN Posts ON Users.user_id = Posts.user_id GROUP BY Users.username HAVING COUNT(Posts.post_id) > 0"
     ]
     
     for i, query in enumerate(queries):
         print(f"Query {i+1}: {query}")
         db.execute(query)
+
+        
+def update_queries(db):
+    queries = [
+        f"UPDATE Users SET bio = 'Updated bio content' WHERE user_id < {NUM_USERS * 20 // 100}",
+        f"UPDATE Posts SET content = 'Updated post content' WHERE post_id < {NUM_POSTS * 20 // 100}",
+        f"UPDATE Posts SET media_url = 'https://new-media-url.com' WHERE post_id > {NUM_POSTS * 70 // 100}",
+        f"UPDATE Users SET email = 'new.email@example.com' WHERE user_id = {NUM_USERS * 15 // 100}",
+        f"UPDATE Messages SET content = 'Updated message content' WHERE message_id < {NUM_MESSAGES * 20 // 100}",
+        f"UPDATE Users SET profile_picture = 'https://new-profile-url.com' WHERE user_id < {NUM_USERS * 20 // 100}",
+        f"UPDATE Comments SET content = 'Updated comment content' WHERE comment_id < {NUM_COMMENTS * 20 // 100}",
+        f"UPDATE Posts SET content = CONCAT(content, ' #UpdatedTag') WHERE user_id < {NUM_USERS * 20 // 100}",
+        f"UPDATE Users SET password_hash = 'newpasswordhash' WHERE user_id < {NUM_USERS * 20 // 100}",
+        f"UPDATE Posts SET content = CONCAT(content, ' [Archived]') WHERE post_id IN (SELECT post_id FROM Posts ORDER BY post_id LIMIT {NUM_POSTS * 10 // 100})"
+    ]
+    
+    for i, query in enumerate(queries):
+        print(f"Query {i+1}: {query}")
+        db.execute(query)
+
+
+
+def delete_queries(db):
+    queries = [
+        f"DELETE FROM Posts WHERE post_id < {NUM_POSTS * 10 // 100}",
+        f"DELETE FROM Comments WHERE post_id < {NUM_POSTS * 30 // 100}",
+        f"DELETE FROM Users WHERE user_id < {NUM_USERS * 5 // 100}",
+        f"DELETE FROM Likes WHERE post_id < {NUM_POSTS * 25 // 100}",
+        f"DELETE FROM Messages WHERE sender_id < {NUM_USERS * 10 // 100} AND receiver_id > {NUM_USERS * 90 // 100}",
+        f"DELETE FROM Users WHERE user_id IN (SELECT user_id FROM Posts WHERE post_id < {NUM_POSTS * 20 // 100})",
+        f"DELETE FROM Followers WHERE following_user_id < {NUM_USERS * 10 // 100}",
+        f"DELETE FROM Posts WHERE post_id IN (SELECT post_id FROM Likes WHERE user_id < {NUM_USERS * 10 // 100})",
+        f"DELETE FROM Comments WHERE user_id < {NUM_USERS * 25 // 100}",
+        f"DELETE FROM Likes WHERE post_id > {NUM_POSTS * 60 // 100} AND user_id < {NUM_USERS * 5 // 100}"
+    ]
+    
+    for i, query in enumerate(queries):
+        print(f"Query {i+1}: {query}")
+        db.execute(query)
+
+
 
 def run_tests(db_type='mariadb'):
     db = Database(db_type)
@@ -204,14 +247,22 @@ def run_tests(db_type='mariadb'):
         print("Testing SELECT:")
 
         select_queries(db)
+        
 
 
     if TEST_UPDATE:
-        pass
-
+        print("Testing UPDATE:")
+        
+        update_queries(db)
+        
     if TEST_DELETE:
+        print("Testing DELETE")
+        
+        delete_queries(db)
 
-        print("Testing DELETE:")
+    if DELETE:
+
+        print("DELETE:")
 
         print(f"Deleting {NUM_MESSAGES} Messages")
         delete_data(db, 'Messages')

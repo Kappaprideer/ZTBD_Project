@@ -3,7 +3,8 @@ import time
 import os
 from faker import Faker
 import pymongo
-import itertools
+import more_itertools
+import math
 from functools import partial
 import sys
 from dotenv import load_dotenv
@@ -19,15 +20,16 @@ DB_TYPE = 'mongodb8'
 
 TEST_INSERT = True
 TEST_SELECT = True
-TEST_UPDATE = False
+TEST_UPDATE = True
 TEST_DELETE = True
+DELETE = True
 
-NUM_USERS = 100000
-NUM_POSTS = 100000
-NUM_COMMENTS = 100000
-NUM_LIKES = 100000
-NUM_FOLLOWERS = 100000
-NUM_MESSAGES = 100000
+NUM_USERS = 10000
+NUM_POSTS = 10000
+NUM_COMMENTS = 10000
+NUM_LIKES = 10000
+NUM_FOLLOWERS = 10000
+NUM_MESSAGES = 10000
 
 if NUM_FOLLOWERS > NUM_USERS * NUM_USERS - NUM_USERS or NUM_LIKES > NUM_POSTS * NUM_USERS:
     exit(1)
@@ -71,10 +73,10 @@ def generate_comments(posts, users, num_comments):
     return [{"comment_id": i+1, "post_id": random.choice(posts)["post_id"], "user_id": random.choice(users)["user_id"], "content": fake.text()} for i in progress_bar(range(num_comments))]
 
 def generate_likes(posts, users, num_likes):
-    return [{"like_id": idx, "post_id": post["post_id"], "user_id": user["user_id"]} for idx, (post, user) in enumerate(progress_bar(list(itertools.islice(itertools.product(posts, users), num_likes))))]
+    return [{"like_id": i+1, "post_id": pair[0]["post_id"], "user_id": pair[1]["user_id"]} for i in progress_bar(random.sample(range(len(posts) * len(users)), num_likes)) if (pair := more_itertools.nth_product(i, posts, users))]
 
 def generate_followers(users, num_followers):
-    return [{"follower_user_id": pair[0]["user_id"], "following_user_id": pair[1]["user_id"]} for pair in progress_bar(list(itertools.islice(itertools.combinations(users, 2), num_followers)))]
+    return [{"follower_user_id": pair[0]["user_id"], "following_user_id": pair[1]["user_id"]} for i in progress_bar(random.sample(range(math.comb(len(users), 2)), num_followers)) if (pair := more_itertools.nth_combination(users, 2, i))]
 
 def generate_messages(users, num_messages):
     return [{"message_id": i+1, "sender_id": random.choice(users)["user_id"], "receiver_id": random.choice(users)["user_id"], "content": fake.text()} for i in progress_bar(range(num_messages))]
@@ -91,22 +93,22 @@ def delete_data(db, collection_name):
 
 def select_queries(db):
     queries = [
-        f"SELECT * FROM Users LIMIT {NUM_USERS // 2}",
-        f"SELECT username, email FROM Users WHERE user_id < {NUM_USERS // 2}",
+        f"SELECT * FROM Users LIMIT {NUM_USERS * 50 // 100}",
+        f"SELECT username, email FROM Users WHERE user_id < {NUM_USERS * 50 // 100}",
         "SELECT COUNT(*) FROM Posts",
-        f"SELECT Users.username, Posts.content FROM Users JOIN Posts ON Users.user_id = Posts.user_id LIMIT {NUM_POSTS // 2}",
+        f"SELECT Users.username, Posts.content FROM Users JOIN Posts ON Users.user_id = Posts.user_id LIMIT {NUM_POSTS * 50 // 100}",
         "SELECT Users.username, COUNT(Comments.comment_id) FROM Users JOIN Comments ON Users.user_id = Comments.user_id GROUP BY Users.username",
-        f"SELECT Posts.post_id, COUNT(Likes.like_id) AS like_count FROM Posts LEFT JOIN Likes ON Posts.post_id = Likes.post_id GROUP BY Posts.post_id ORDER BY like_count DESC LIMIT {NUM_POSTS // 2}",
-        "SELECT Users.username FROM Users WHERE EXISTS (SELECT 1 FROM Followers WHERE Followers.follower_user_id = Users.user_id)",
+        f"SELECT Posts.post_id, COUNT(Likes.like_id) AS like_count FROM Posts LEFT JOIN Likes ON Posts.post_id = Likes.post_id GROUP BY Posts.post_id ORDER BY like_count DESC LIMIT {NUM_POSTS * 50 // 100}",
+        f"SELECT Users.username FROM Users WHERE EXISTS (SELECT 1 FROM Followers WHERE Followers.follower_user_id = Users.user_id)",
         "SELECT Messages.sender_id, Messages.receiver_id, COUNT(Messages.message_id) FROM Messages GROUP BY Messages.sender_id, Messages.receiver_id HAVING COUNT(Messages.message_id) > 0",
-        "SELECT Users.username, Posts.content FROM Users JOIN Posts ON Users.user_id = Posts.user_id WHERE Posts.post_id IN (SELECT post_id FROM Likes GROUP BY post_id HAVING COUNT(user_id) > 0)",
+        "SELECT Users.username, Posts.content FROM Users JOIN Posts ON Users.user_id = Posts.user_id JOIN Likes ON Posts.post_id = Likes.post_id GROUP BY Users.username, Posts.content HAVING COUNT(Likes.like_id) > 1",
         "SELECT Users.username, COUNT(Posts.post_id) AS post_count FROM Users JOIN Posts ON Users.user_id = Posts.user_id GROUP BY Users.username HAVING COUNT(Posts.post_id) > 0"
     ]
 
     mongo_queries = [
-        partial(db.db.Users.find().limit, NUM_USERS // 2),
-        partial(db.db.Users.find, {"user_id": {"$lt": NUM_USERS // 2}}, {"username": 1, "email": 1}),
-        partial(db.db.Posts.count_documents,{}),
+        partial(db.db.Users.find().limit, NUM_USERS * 50 // 100),
+        partial(db.db.Users.find, {"user_id": {"$lt": NUM_USERS * 50 // 100}}, {"username": 1, "email": 1}),
+        partial(db.db.Posts.count_documents, {}),
         partial(db.db.Users.aggregate, [
             {
                 "$lookup": {
@@ -118,7 +120,7 @@ def select_queries(db):
             },
             {"$unwind": "$posts"},
             {"$project": {"username": 1, "posts.content": 1}},
-            {"$limit": NUM_POSTS // 2}
+            {"$limit": NUM_POSTS * 50 // 100}
         ]),
         partial(db.db.Users.aggregate, [
             {
@@ -136,8 +138,6 @@ def select_queries(db):
                 }
             }
         ]),
-
-        # too complex for 100000 elements, change or optimize
         partial(db.db.Posts.aggregate, [
             {
                 "$lookup": {
@@ -154,7 +154,7 @@ def select_queries(db):
                 }
             },
             {"$sort": {"like_count": -1}},
-            {"$limit": NUM_POSTS // 2}
+            {"$limit": NUM_POSTS * 50 // 100}
         ]),
         partial(db.db.Users.aggregate, [
             {
@@ -190,46 +190,33 @@ def select_queries(db):
         partial(db.db.Posts.aggregate, [
             {
                 "$lookup": {
-                "from": "Users",
-                "localField": "user_id",
-                "foreignField": "user_id",
-                "as": "user_info"
+                    "from": "Likes",
+                    "localField": "post_id",
+                    "foreignField": "post_id",
+                    "as": "likes_info"
+                }
+            },
+            {
+                "$match": {
+                    "likes_info": { "$ne": [] }
+                }
+            },
+            {
+                "$lookup": {
+                    "from": "Users",
+                    "localField": "user_id",
+                    "foreignField": "user_id",
+                    "as": "user_info"
                 }
             },
             {
                 "$unwind": "$user_info"
             },
             {
-                "$lookup": {
-                "from": "Likes",
-                "localField": "post_id",
-                "foreignField": "post_id",
-                "as": "likes_info"
-                }
-            },
-            {
-                "$match": {
-                "likes_info.user_id": { "$exists": "true" }
-                }
-            },
-            {
-                "$group": {
-                "_id": "$post_id",
-                "username": { "$first": "$user_info.username" },
-                "content": { "$first": "$content" },
-                "like_count": { "$sum": 1 }
-                }
-            },
-            {
-                "$match": {
-                "like_count": { "$gt": 0 }
-                }
-            },
-            {
                 "$project": {
-                "_id": 0,
-                "username": 1,
-                "content": 1
+                    "_id": 0,
+                    "username": "$user_info.username",
+                    "content": "$content"
                 }
             }
         ]),
@@ -252,12 +239,153 @@ def select_queries(db):
         ])
     ]
 
-    
-        
     for i, query in enumerate(queries):
         print(f"Query {i+1}: {query}")
         mongo_queries[i]()
         db.print_query_time()
+
+
+from functools import partial
+
+def update_queries(db):
+    queries = [
+        f"UPDATE Users SET bio = 'Updated bio content' WHERE user_id < {NUM_USERS * 20 // 100}",
+        f"UPDATE Posts SET content = 'Updated post content' WHERE post_id < {NUM_POSTS * 20 // 100}",
+        f"UPDATE Posts SET media_url = 'https://new-media-url.com' WHERE post_id > {NUM_POSTS * 70 // 100}",
+        f"UPDATE Users SET email = 'new.email@example.com' WHERE user_id = {NUM_USERS * 15 // 100}",
+        f"UPDATE Messages SET content = 'Updated message content' WHERE message_id < {NUM_MESSAGES * 20 // 100}",
+        f"UPDATE Users SET profile_picture = 'https://new-profile-url.com' WHERE user_id < {NUM_USERS * 20 // 100}",
+        f"UPDATE Comments SET content = 'Updated comment content' WHERE comment_id < {NUM_COMMENTS * 20 // 100}",
+        f"UPDATE Posts SET content = CONCAT(content, ' #UpdatedTag') WHERE user_id < {NUM_USERS * 20 // 100}",
+        f"UPDATE Users SET password_hash = 'newpasswordhash' WHERE user_id < {NUM_USERS * 20 // 100}",
+        f"UPDATE Posts SET content = CONCAT(content, ' [Archived]') WHERE post_id IN (SELECT post_id FROM Posts ORDER BY post_id LIMIT {NUM_POSTS * 10 // 100})"
+    ]
+
+    mongo_queries = [
+        partial(db.db.Users.update_many,
+                {"user_id": {"$lt": NUM_USERS * 20 // 100}},
+                {"$set": {"bio": "Updated bio content"}}),
+        
+        partial(db.db.Posts.update_many,
+                {"post_id": {"$lt": NUM_POSTS * 20 // 100}},
+                {"$set": {"content": "Updated post content"}}),
+        
+        partial(db.db.Posts.update_many,
+                {"post_id": {"$gt": NUM_POSTS * 70 // 100}},
+                {"$set": {"media_url": "https://new-media-url.com"}}),
+        
+        partial(db.db.Users.update_one,
+                {"user_id": NUM_USERS * 15 // 100},
+                {"$set": {"email": "new.email@example.com"}}),
+        
+        partial(db.db.Messages.update_many,
+                {"message_id": {"$lt": NUM_MESSAGES * 20 // 100}},
+                {"$set": {"content": "Updated message content"}}),
+        
+        partial(db.db.Users.update_many,
+                {"user_id": {"$lt": NUM_USERS * 20 // 100}},
+                {"$set": {"profile_picture": "https://new-profile-url.com"}}),
+        
+        partial(db.db.Comments.update_many,
+                {"comment_id": {"$lt": NUM_COMMENTS * 20 // 100}},
+                {"$set": {"content": "Updated comment content"}}),
+
+        partial(db.db.Posts.update_many,
+                {"user_id": {"$lt": NUM_USERS * 20 // 100}},
+                [{"$set": {"content": {"$concat": ["$content", " #UpdatedTag"]}}}]),
+
+        partial(db.db.Users.update_many,
+                {"user_id": {"$lt": NUM_USERS * 20 // 100}},
+                {"$set": {"password_hash": "newpasswordhash"}}),
+
+        partial(db.db.Posts.update_many,
+                {"post_id": {"$in": list(range(NUM_POSTS * 10 // 100))}},
+                [{"$set": {"content": {"$concat": ["$content", " [Archived]"]}}}])
+    ]
+
+    for i, query in enumerate(queries):
+        print(f"Query {i+1}: {query}")
+        mongo_queries[i]()
+        db.print_query_time()
+
+def delete_queries(db):
+    queries = [
+        f"DELETE FROM Posts WHERE post_id < {NUM_POSTS * 10 // 100}",
+        f"DELETE FROM Comments WHERE post_id < {NUM_POSTS * 30 // 100}",
+        f"DELETE FROM Users WHERE user_id < {NUM_USERS * 5 // 100}",
+        f"DELETE FROM Likes WHERE post_id < {NUM_POSTS * 25 // 100}",
+        f"DELETE FROM Messages WHERE sender_id < {NUM_USERS * 10 // 100} AND receiver_id > {NUM_USERS * 90 // 100}",
+        f"DELETE FROM Users WHERE user_id IN (SELECT user_id FROM Posts WHERE post_id < {NUM_POSTS * 20 // 100})",
+        f"DELETE FROM Followers WHERE following_user_id < {NUM_USERS * 10 // 100}",
+        f"DELETE FROM Posts WHERE post_id IN (SELECT post_id FROM Likes WHERE user_id < {NUM_USERS * 10 // 100})",
+        f"DELETE FROM Comments WHERE user_id < {NUM_USERS * 25 // 100}",
+        f"DELETE FROM Likes WHERE post_id > {NUM_POSTS * 60 // 100} AND user_id < {NUM_USERS * 5 // 100}"
+    ]
+
+    mongo_queries = [
+        partial(db.db.Posts.delete_many, {
+            "post_id": {"$lt": NUM_POSTS * 10 // 100}
+        }),
+
+        partial(db.db.Comments.delete_many, {
+            "post_id": {"$lt": NUM_POSTS * 30 // 100}
+        }),
+
+        partial(db.db.Users.delete_many, {
+            "user_id": {"$lt": NUM_USERS * 5 // 100}
+        }),
+
+        partial(db.db.Likes.delete_many, {
+            "post_id": {"$lt": NUM_POSTS * 25 // 100}
+        }),
+
+        partial(db.db.Messages.delete_many, {
+            "sender_id": {"$lt": NUM_USERS * 10 // 100},
+            "receiver_id": {"$gt": NUM_USERS * 90 // 100}
+        }),
+
+        partial(db.db.Users.delete_many, {
+            "user_id": {
+                "$in": list(
+                    db.db.Posts.find(
+                        {"post_id": {"$lt": NUM_POSTS * 20 // 100}},
+                        {"user_id": 1, "_id": 0}
+                    ).distinct("user_id")
+                )
+            }
+        }),
+
+        partial(db.db.Followers.delete_many, {
+            "following_user_id": {"$lt": NUM_USERS * 10 // 100}
+        }),
+
+        partial(db.db.Posts.delete_many, {
+            "post_id": {
+                "$in": list(
+                    db.db.Likes.find(
+                        {"user_id": {"$lt": NUM_USERS * 10 // 100}},
+                        {"post_id": 1, "_id": 0}
+                    ).distinct("post_id")
+                )
+            }
+        }),
+
+        partial(db.db.Comments.delete_many, {
+            "user_id": {"$lt": NUM_USERS * 25 // 100}
+        }),
+
+        partial(db.db.Likes.delete_many, {
+            "post_id": {"$gt": NUM_POSTS * 60 // 100},
+            "user_id": {"$lt": NUM_USERS * 5 // 100}
+        })
+    ]
+
+    for i, query in enumerate(queries):
+        print(f"Query {i+1}: {query}")
+        mongo_queries[i]()
+        db.print_query_time()
+
+
 
 def run_tests(db_type='mongodb7'):
     db = Database(db_type)
@@ -307,9 +435,14 @@ def run_tests(db_type='mongodb7'):
         select_queries(db)
 
     if TEST_UPDATE:
-        pass
+        print("Testing UPDATE")
+        update_queries(db)
 
     if TEST_DELETE:
+        print("Testing DELETE")
+        delete_queries(db)
+
+    if DELETE:
         print("Testing DELETE:")
 
         print(f"Deleting {NUM_MESSAGES} Messages")
