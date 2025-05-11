@@ -168,7 +168,7 @@ def update_queries(db):
         f"UPDATE Comments SET content = 'Updated comment content' WHERE comment_id < {NUM_COMMENTS * 20 // 100}",
         f"UPDATE Posts SET content = CONCAT(content, ' #UpdatedTag') WHERE user_id < {NUM_USERS * 20 // 100}",
         f"UPDATE Users SET password_hash = 'newpasswordhash' WHERE user_id < {NUM_USERS * 20 // 100}",
-        f"UPDATE Posts SET content = CONCAT(content, ' [Archived]') WHERE post_id IN (SELECT post_id FROM Posts ORDER BY post_id LIMIT {NUM_POSTS * 10 // 100})"
+        f"UPDATE Posts JOIN (SELECT post_id FROM Posts ORDER BY post_id LIMIT {NUM_POSTS * 10 // 100}) AS LimitedPosts ON Posts.post_id = LimitedPosts.post_id SET Posts.content = CONCAT(Posts.content, ' [Archived]');" if DB_TYPE == "mariadb" else f"UPDATE Posts SET content = CONCAT(content, ' [Archived]') FROM (SELECT post_id FROM Posts ORDER BY post_id LIMIT {NUM_POSTS * 10 // 100}) AS LimitedPosts WHERE Posts.post_id = LimitedPosts.post_id;"
     ]
     
     for i, query in enumerate(queries):
