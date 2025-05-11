@@ -15,8 +15,8 @@ Faker.seed(41)
 fake = Faker()
 load_dotenv()
 
-# DB_TYPE = 'mongodb7'
-DB_TYPE = 'mongodb8'
+DB_TYPE = 'mongodb7'
+# DB_TYPE = 'mongodb8'
 
 TEST_INSERT = True
 TEST_SELECT = True
@@ -46,7 +46,9 @@ class Database:
         self.client.close()
 
     def print_query_time(self):
-        print(f"{self.db.system.profile.find_one(sort=[("ts", -1)]).get("millis", "N/A")} ms\n")
+        print_value = f"{self.db.system.profile.find_one(sort=[("ts", -1)]).get("millis", "N/A")}"
+        print(f"{print_value} ms\n")
+        return print_value
 
 def progress_bar(iterable, prefix='Progress: ', length=50, fill='█'):
     def print_progress(iteration):
@@ -239,10 +241,27 @@ def select_queries(db):
         ])
     ]
 
+    times_of_the_times = []
     for i, query in enumerate(queries):
-        print(f"Query {i+1}: {query}")
-        mongo_queries[i]()
-        db.print_query_time()
+        
+        print(f"\nQuery {i+1}: {query}")
+
+        times = []
+        for _ in range(10):
+            mongo_queries[i]()
+            times.append(db.print_query_time())
+        times_of_the_times.append(times)
+    
+    print("\nAll times:")
+    for i, times in enumerate(times_of_the_times):
+        print(f"{i+1} {'\t'.join([f'{float(t):.3f}' for t in times])}\n")
+        # print(f"{i+1} {'\t'.join([t for t in times])}\n")
+
+
+    # for i, query in enumerate(queries):
+    #     print(f"Query {i+1}: {query}")
+    #     mongo_queries[i]()
+    #     db.print_query_time()
 
 
 from functools import partial
@@ -303,10 +322,25 @@ def update_queries(db):
                 [{"$set": {"content": {"$concat": ["$content", " [Archived]"]}}}])
     ]
 
+    times_of_the_times = []
     for i, query in enumerate(queries):
-        print(f"Query {i+1}: {query}")
-        mongo_queries[i]()
-        db.print_query_time()
+        
+        print(f"\nQuery {i+1}: {query}")
+
+        times = []
+        for _ in range(10):
+            mongo_queries[i]()
+            times.append(db.print_query_time())
+        times_of_the_times.append(times)
+    
+    print("\nAll times:")
+    for i, times in enumerate(times_of_the_times):
+        print(f"{i+1} {'\t'.join([f'{float(t):.3f}' for t in times])}\n")
+
+    # for i, query in enumerate(queries):
+    #     print(f"Query {i+1}: {query}")
+    #     mongo_queries[i]()
+    #     db.print_query_time()
 
 def delete_queries(db):
     queries = [
@@ -380,10 +414,25 @@ def delete_queries(db):
         })
     ]
 
+    times_of_the_times = []
     for i, query in enumerate(queries):
-        print(f"Query {i+1}: {query}")
-        mongo_queries[i]()
-        db.print_query_time()
+        
+        print(f"\nQuery {i+1}: {query}")
+
+        times = []
+        for _ in range(10):
+            mongo_queries[i]()
+            times.append(db.print_query_time())
+        times_of_the_times.append(times)
+    
+    print("\nAll times:")
+    for i, times in enumerate(times_of_the_times):
+        print(f"{i+1} {'\t'.join([f'{float(t):.3f}' for t in times])}\n")
+
+    # for i, query in enumerate(queries):
+    #     print(f"Query {i+1}: {query}")
+    #     mongo_queries[i]()
+    #     db.print_query_time()
 
 
 

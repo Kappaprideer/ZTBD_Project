@@ -20,11 +20,11 @@ DB_TYPE = 'postgresql'
 
 DEBUG_SELECT = False
 
-TEST_INSERT = False
+TEST_INSERT = True
 TEST_SELECT = True
 TEST_UPDATE = True
 TEST_DELETE = True
-DELETE = False
+DELETE = True
 
 NUM_USERS = 10000
 NUM_POSTS = 10000
@@ -79,13 +79,14 @@ class Database:
                 self.cursor.fetchall()
             self.cursor.execute("SHOW PROFILES;")
             profiles = self.cursor.fetchall()
-            print(f"{float(profiles[-1][1]) * 1000:.3f} ms\n")
+            print(f"{float(profiles[-1][1]) * 1000:.3f} ms,")
+            return f"{float(profiles[-1][1]) * 1000:.3f}"
         else:
             explain_query = f"EXPLAIN ANALYZE {query}"
             self.cursor.execute(explain_query, values or [])
             explain_output = self.cursor.fetchall()
-            print(f"{float(explain_output[-1][0].split(" ")[2]):.3f} ms\n")
-        return None
+            print(f"{float(explain_output[-1][0].split(" ")[2]):.3f} ms,", end=" ")
+        return f"{float(explain_output[-1][0].split(" ")[2]):.3f}"
 
     def commit(self):
         self.conn.commit()
@@ -152,9 +153,25 @@ def select_queries(db):
         "SELECT Users.username, COUNT(Posts.post_id) AS post_count FROM Users JOIN Posts ON Users.user_id = Posts.user_id GROUP BY Users.username HAVING COUNT(Posts.post_id) > 0"
     ]
     
+    times_of_the_times = []
     for i, query in enumerate(queries):
-        print(f"Query {i+1}: {query}")
-        db.execute(query)
+        
+        print(f"\nQuery {i+1}: {query}")
+
+        times = []
+        for _ in range(10):
+            times.append(db.execute(query))
+        # print(f"Average time: {sum(float(t) for t in times) / len(times):.3f} ms\n")
+        # print(f"Max time: {max(float(t) for t in times):.3f} ms\n")
+        # print(f"Min time: {min(float(t) for t in times):.3f} ms\n")
+        # print(f"Median time: {sorted(float(t) for t in times)[len(times) // 2]:.3f} ms\n")
+        # print(f"Test nr.{i+1} {'\t'.join([f'{float(t):.3f}' for t in times])}\n")
+        times_of_the_times.append(times)
+    
+    print("\nAll times:")
+    for i, times in enumerate(times_of_the_times):
+        print(f"{i+1} {'\t'.join([f'{float(t):.3f}' for t in times])}\n")
+
 
         
 def update_queries(db):
@@ -171,9 +188,24 @@ def update_queries(db):
         f"UPDATE Posts SET content = CONCAT(content, ' [Archived]') WHERE post_id IN (SELECT post_id FROM Posts ORDER BY post_id LIMIT {NUM_POSTS * 10 // 100})"
     ]
     
+    times_of_the_times = []
     for i, query in enumerate(queries):
-        print(f"Query {i+1}: {query}")
-        db.execute(query)
+        
+        print(f"\nQuery {i+1}: {query}")
+
+        times = []
+        for _ in range(10):
+            times.append(db.execute(query))
+        times_of_the_times.append(times)
+    
+    print("\nAll times:")
+    for i, times in enumerate(times_of_the_times):
+        print(f"{i+1} {'\t'.join([f'{float(t):.3f}' for t in times])}\n")
+
+    
+    # for i, query in enumerate(queries):
+    #     print(f"Query {i+1}: {query}")
+    #     db.execute(query)
 
 
 
@@ -191,9 +223,24 @@ def delete_queries(db):
         f"DELETE FROM Likes WHERE post_id > {NUM_POSTS * 60 // 100} AND user_id < {NUM_USERS * 5 // 100}"
     ]
     
+
+    times_of_the_times = []
     for i, query in enumerate(queries):
-        print(f"Query {i+1}: {query}")
-        db.execute(query)
+        
+        print(f"\nQuery {i+1}: {query}")
+
+        times = []
+        for _ in range(10):
+            times.append(db.execute(query))
+        times_of_the_times.append(times)
+    
+    print("\nAll times:")
+    for i, times in enumerate(times_of_the_times):
+        print(f"{i+1} {'\t'.join([f'{float(t):.3f}' for t in times])}\n")
+
+    # for i, query in enumerate(queries):
+    #     print(f"Query {i+1}: {query}")
+    #     db.execute(query)
 
 
 
